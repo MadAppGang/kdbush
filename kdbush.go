@@ -99,10 +99,18 @@ func (bush *KDBush) Range(minX, minY, maxX, maxY float64) []int {
 }
 
 // Finds all items within a given radius from the query point and returns an array of indices.
-func (bush *KDBush) Within(point Point, radius float64) []int {
+// Set true haverstine for calculate correctly distance between two geographical points on a sphere.
+func (bush *KDBush) Within(point Point, radius float64, haversine bool) []int {
 	stack := []int{0, len(bush.idxs) - 1, 0}
 	result := []int{}
-	r2 := radius * radius
+
+	var r2 float64
+	if haversine {
+		r2 = radius
+	} else {
+		r2 = radius * radius
+	}
+
 	qx, qy := point.Coordinates()
 
 	for len(stack) > 0 {
@@ -115,7 +123,7 @@ func (bush *KDBush) Within(point Point, radius float64) []int {
 
 		if right-left <= bush.NodeSize {
 			for i := left; i <= right; i++ {
-				dst := sqrtDist(bush.coords[2*i], bush.coords[2*i+1], qx, qy)
+				dst := distance(bush.coords[2*i], bush.coords[2*i+1], qx, qy, haversine)
 				if dst <= r2 {
 					result = append(result, bush.idxs[i])
 				}
@@ -127,7 +135,7 @@ func (bush *KDBush) Within(point Point, radius float64) []int {
 		x := bush.coords[2*m]
 		y := bush.coords[2*m+1]
 
-		if sqrtDist(x, y, qx, qy) <= r2 {
+		if distance(x, y, qx, qy, haversine) <= r2 {
 			result = append(result, bush.idxs[m])
 		}
 
@@ -285,4 +293,28 @@ func sqrtDist(ax, ay, bx, by float64) float64 {
 	dx := ax - bx
 	dy := ay - by
 	return dx*dx + dy*dy
+}
+
+func orthoDist(ax, ay, bx, by float64) float64 {
+	var la1, lo1, la2, lo2, r float64
+	r = 6378100 // Earth radius in METERS (equator)
+	lo1 = ax * math.Pi / 180  // longitude
+	la1 = ay * math.Pi / 180  // latitude
+	lo2 = bx * math.Pi / 180
+	la2 = by * math.Pi / 180
+
+	h := hsin(lo2-lo1) + math.Cos(lo1)*math.Cos(lo2)*hsin(la2-la1)
+
+	return 2 * r * math.Asin(math.Sqrt(h))
+}
+
+func distance(ax, ay, bx, by float64, haversine bool) float64 {
+	if haversine {
+		return orthoDist(ax, ay, bx, by)
+	}
+	return sqrtDist(ax, ay, bx, by)
+}
+
+func hsin(theta float64) float64 {
+	return math.Pow(math.Sin(theta/2), 2)
 }
